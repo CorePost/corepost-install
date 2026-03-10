@@ -68,20 +68,9 @@ download() {
 
 json_get() {
   local key="$1"
-  python3 - "$key" <<'PY'
-import json
-import sys
-
-key = sys.argv[1]
-data = json.load(sys.stdin)
-val = data.get(key)
-if val is None:
-    raise SystemExit(2)
-if isinstance(val, (dict, list)):
-    print(json.dumps(val))
-else:
-    print(val)
-PY
+  python3 -c 'import json,sys; key=sys.argv[1]; data=json.load(sys.stdin); val=data.get(key); \
+    (val is None) and (_ for _ in ()).throw(SystemExit(2)); \
+    print(json.dumps(val) if isinstance(val,(dict,list)) else val)' "$key"
 }
 
 state_dir="${COREPOST_STATE_DIR:-/var/lib/corepost-install}"
@@ -425,4 +414,3 @@ main() {
 }
 
 main "$@"
-
