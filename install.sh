@@ -90,10 +90,31 @@ json_get() {
 state_dir="${COREPOST_STATE_DIR:-/var/lib/corepost-install}"
 runtime_dir="${COREPOST_RUNTIME_DIR:-/etc/corepost-install}"
 preboot_conf="${COREPOST_PREBOOT_CONF:-/etc/corepost-preboot.conf}"
+provisioning_path="${COREPOST_PROVISIONING_JSON:-/var/lib/corepost-install/provisioning.json}"
 
 ensure_dirs() {
   mkdir -p "$state_dir" "$runtime_dir"
   chmod 0700 "$state_dir" "$runtime_dir"
+}
+
+conf_get() {
+  # Reads KEY="value" from a shell-style config file.
+  local file="$1"
+  local key="$2"
+  [ -f "$file" ] || return 1
+  # shellcheck disable=SC2002
+  cat "$file" | sed -n "s/^${key}=\"\\(.*\\)\"$/\\1/p" | head -n 1
+}
+
+load_provisioning_bundle() {
+  [ -f "$provisioning_path" ] || return 1
+  cat "$provisioning_path"
+}
+
+save_provisioning_bundle() {
+  local bundle="$1"
+  printf '%s\n' "$bundle" >"$provisioning_path"
+  chmod 0600 "$provisioning_path"
 }
 
 register_device() {
@@ -348,9 +369,8 @@ cmd_install() {
 
   local bundle
   bundle="$(register_device "$server_url" "$admin_token" "$unlock_profile" "$usb_key_id")"
-  printf '%s\n' "$bundle" >"$state_dir/provisioning.json"
-  chmod 0600 "$state_dir/provisioning.json"
-  log "Saved provisioning bundle to $state_dir/provisioning.json"
+  save_provisioning_bundle "$bundle"
+  log "Saved provisioning bundle to $provisioning_path"
 
   local device_id device_secret unlock_token
   device_id="$(printf '%s\n' "$bundle" | json_get deviceId)"
@@ -373,6 +393,75 @@ cmd_install() {
   fi
 
   log "Install complete"
+}
+
+cmd_reconfigure() {
+  require_root
+  require_cmd curl
+  require_cmd openssl
+  require_cmd sed
+
+  ensure_dirs
+
+  local existing_server_url=""
+  existing_server_url="${COREPOST_SERVER_URL:-}"
+  if [ -z "$existing_server_url" ]; then
+    existing_server_url="$(conf_get "$preboot_conf" COREPOST_SERVER_URL || true)"
+  fi
+
+  local server_url=""
+  if [ -n "$existing_server_url" ]; then
+    read_prompt server_url "Server base URL (scheme://host:port)" "$existing_server_url"
+  else
+    read_prompt server_url "Server base URL (scheme://host:port)"
+  fi
+
+  local bundle=""
+  if bundle="$(load_provisioning_bundle)"; then
+    :
+  else
+    log "No provisioning bundle found at $provisioning_path"
+    log "Reconfigure can still refresh runtime, but it cannot rewrite config without a bundle."
+    bundle=""
+  fi
+
+  if confirm "Re-register device on server (rotate secrets)?" ; then
+    local admin_token="${COREPOST_ADMIN_TOKEN:-}"
+    if [ -z "$admin_token" ]; then
+      read_secret admin_token "Admin token"
+    fi
+
+    local unlock_profile="2fa"
+    local usb_key_id=""
+    if confirm "Enable 3FA (requires a removable device labeled COREPOST_USB)?" ; then
+      unlock_profile="3fa"
+      usb_key_id="corepost-usb-$(rand_hex 8)"
+      setup_3fa_usb_factor
+    fi
+
+    bundle="$(register_device "$server_url" "$admin_token" "$unlock_profile" "$usb_key_id")"
+    save_provisioning_bundle "$bundle"
+    log "Saved provisioning bundle to $provisioning_path"
+  fi
+
+  if [ -n "$bundle" ]; then
+    local device_id device_secret unlock_profile
+    device_id="$(printf '%s\n' "$bundle" | json_get deviceId)"
+    device_secret="$(printf '%s\n' "$bundle" | json_get deviceSecret)"
+    unlock_profile="$(printf '%s\n' "$bundle" | json_get unlockProfile || true)"
+    if [ -z "$unlock_profile" ]; then
+      unlock_profile="$(conf_get "$preboot_conf" COREPOST_UNLOCK_PROFILE || true)"
+      unlock_profile="${unlock_profile:-2fa}"
+    fi
+    write_preboot_conf "$server_url" "$device_id" "$device_secret" "$unlock_profile"
+  else
+    log "Keeping existing $preboot_conf (not rewriting, bundle missing)"
+  fi
+
+  install_preboot_runtime
+  install_agent_stub
+
+  log "Reconfigure complete"
 }
 
 cmd_uninstall() {
@@ -405,6 +494,7 @@ usage() {
   cat >&2 <<'EOF'
 Usage:
   ./install.sh install
+  ./install.sh reconfigure
   ./install.sh uninstall
 
 Environment variables (optional):
@@ -419,6 +509,7 @@ Environment variables (optional):
   COREPOST_AGENT_REF         Agent ref (default: main)
 
   COREPOST_STATE_DIR         State dir (default: /var/lib/corepost-install)
+  COREPOST_PROVISIONING_JSON Provisioning bundle path (default: /var/lib/corepost-install/provisioning.json)
   COREPOST_PREBOOT_CONF      Preboot config path (default: /etc/corepost-preboot.conf)
 EOF
 }
@@ -427,6 +518,7 @@ main() {
   local cmd="${1:-}"
   case "$cmd" in
     install) shift; cmd_install "$@" ;;
+    reconfigure) shift; cmd_reconfigure "$@" ;;
     uninstall) shift; cmd_uninstall "$@" ;;
     ""|-h|--help|help) usage ;;
     *) usage; exit 2 ;;
