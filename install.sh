@@ -176,7 +176,6 @@ install_preboot_runtime() {
   log "Downloading preboot runtime from raw GitHub (ref=$ref)..."
   local tmp
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
 
   download "$hook_url" "$tmp/corepost-preboot-hook"
   download "$script_url" "$tmp/corepost-preboot-script"
@@ -187,6 +186,8 @@ install_preboot_runtime() {
   log "Updating initramfs..."
   require_cmd update-initramfs
   update-initramfs -u
+
+  rm -rf "$tmp"
 }
 
 install_agent_stub() {
@@ -201,7 +202,6 @@ install_agent_stub() {
   log "Downloading agent stub from raw GitHub (ref=$ref)..."
   local tmp
   tmp="$(mktemp -d)"
-  trap 'rm -rf "$tmp"' EXIT
 
   download "$unit_url" "$tmp/corepost-agent.service"
   download "$script_url" "$tmp/corepost-agent.sh"
@@ -221,6 +221,8 @@ install_agent_stub() {
   else
     log "systemctl not available; skipping service enable"
   fi
+
+  rm -rf "$tmp"
 }
 
 list_removable_block_devices() {
