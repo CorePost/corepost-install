@@ -145,7 +145,7 @@ write_agent_env() {
 COREPOST_SERVER_URL="${server_url}"
 COREPOST_DEVICE_ID="${device_id}"
 COREPOST_DEVICE_SECRET="${device_secret}"
-COREPOST_AGENT_HEARTBEAT_SECONDS="60"
+COREPOST_AGENT_POLL_INTERVAL_SECONDS="60"
 EOF
   chmod 0600 "$agent_env_path"
 }

@@ -1,4 +1,4 @@
-# corepost-install
+## corepost-install
 
 `corepost-install` это интерактивный bash-установщик и provisioning-компонент для демо-стенда CorePost.
 
@@ -29,6 +29,10 @@ Installer скачивает нужные артефакты по HTTPS из Git
 - `COREPOST_GITHUB_RAW_HOST` (по умолчанию `raw.githubusercontent.com`)
 - `COREPOST_PREBOOT_REPO`, `COREPOST_PREBOOT_REF`
 - `COREPOST_AGENT_REPO`, `COREPOST_AGENT_REF`
+
+Для воспроизводимого демо рекомендуется pin на конкретный tag или commit SHA, а не `main`:
+- `COREPOST_PREBOOT_REF=<tag-or-sha>`
+- `COREPOST_AGENT_REF=<tag-or-sha>`
 
 ### 2) Регистрация на сервере
 
