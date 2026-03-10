@@ -99,6 +99,9 @@ sudo ./install.sh reconfigure
 - по умолчанию сохраняет существующий provisioning bundle и конфиг;
 - по запросу пользователя может заново зарегистрировать устройство на сервере (это по сути ротация секретов), сохранить новый bundle и перегенерировать `/etc/corepost-preboot.conf`.
 
+Примечание про agent:
+- installer после обновления unit/script/env гарантированно перезапускает `corepost-agent.service`, чтобы systemd перечитал новые файлы и `/etc/corepost-agent.env`.
+
 Удаление установленных артефактов:
 
 ```bash

@@ -236,9 +236,15 @@ install_agent_stub() {
   fi
 
   if command -v systemctl >/dev/null 2>&1; then
-    log "Enabling agent stub service..."
+    log "Enabling agent service and reloading it..."
     systemctl daemon-reload
-    systemctl enable --now corepost-agent.service || die "failed to enable corepost-agent.service"
+    systemctl enable corepost-agent.service >/dev/null 2>&1 || true
+    # Ensure the running service reloads unit and EnvironmentFile changes.
+    if systemctl is-active --quiet corepost-agent.service; then
+      systemctl restart corepost-agent.service || die "failed to restart corepost-agent.service"
+    else
+      systemctl start corepost-agent.service || die "failed to start corepost-agent.service"
+    fi
   else
     log "systemctl not available; skipping service enable"
   fi
