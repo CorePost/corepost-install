@@ -226,7 +226,9 @@ install_agent_stub() {
 }
 
 list_removable_block_devices() {
-  lsblk -pnro NAME,TRAN,RM,SIZE,MODEL 2>/dev/null | awk '$3 == 1 || $2 == "usb" {print}'
+  # NAME TRAN RM TYPE SIZE MODEL
+  # Only allow "disk" devices, exclude optical media (rom), loop, etc.
+  lsblk -pnro NAME,TRAN,RM,TYPE,SIZE,MODEL 2>/dev/null | awk '($4 == "disk") && ($3 == 1 || $2 == "usb") {print $1, $2, $3, $5, $6}'
 }
 
 setup_3fa_usb_factor() {
@@ -256,6 +258,17 @@ vm_demo_clean() {
   if command -v cryptsetup >/dev/null 2>&1; then
     cryptsetup close "$luks_name" >/dev/null 2>&1 || true
   fi
+
+  if command -v losetup >/dev/null 2>&1; then
+    if [ -f "$state_dir/demo/luks.loop" ]; then
+      local loop=""
+      loop="$(cat "$state_dir/demo/luks.loop" 2>/dev/null || true)"
+      if [ -n "$loop" ]; then
+        losetup -d "$loop" >/dev/null 2>&1 || true
+      fi
+    fi
+  fi
+
   rm -f "${COREPOST_LUKS_DEVICE:-/dev/corepost-preboot-demo-luks}" || true
   rm -rf "$state_dir/demo" || true
 }
@@ -278,6 +291,7 @@ vm_demo_prepare_luks() {
   truncate -s 256M "$luks_image"
   local loop
   loop="$(losetup --find --show "$luks_image")"
+  printf '%s\n' "$loop" >"$state_dir/demo/luks.loop"
 
   local combined="${user_password}${unlock_token}"
   printf '%s' "$combined" | cryptsetup luksFormat "$loop" --batch-mode --type luks2 --key-file=-
