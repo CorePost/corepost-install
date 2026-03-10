@@ -66,11 +66,25 @@ download() {
   curl -fsS -L "$url" -o "$out"
 }
 
+rand_hex() {
+  # shellcheck disable=SC2312
+  openssl rand -hex "${1:-8}"
+}
+
+json_escape() {
+  # Minimal JSON string escaper for our controlled inputs (hostname, machine-id, etc).
+  # Escapes backslash and double-quote.
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
 json_get() {
+  # Extracts a top-level string field from a JSON object.
+  # This is intentionally minimal (installer expects simple string keys).
   local key="$1"
-  python3 -c 'import json,sys; key=sys.argv[1]; data=json.load(sys.stdin); val=data.get(key); \
-    (val is None) and (_ for _ in ()).throw(SystemExit(2)); \
-    print(json.dumps(val) if isinstance(val,(dict,list)) else val)' "$key"
+  local val=""
+  val="$(sed -n "s/.*\\\"${key}\\\":\\\"\\([^\\\"]*\\)\\\".*/\\1/p" | head -n 1)"
+  [ -n "$val" ] || return 2
+  printf '%s\n' "$val"
 }
 
 state_dir="${COREPOST_STATE_DIR:-/var/lib/corepost-install}"
@@ -95,32 +109,19 @@ register_device() {
   fi
 
   local payload=""
-  if [ -n "$usb_key_id" ]; then
-    payload="$(python3 - <<PY
-import json
-print(json.dumps({
-  "displayName": "$display_name",
-  "hwid": "$hwid" if "$hwid" else None,
-  "unlockProfile": "$unlock_profile",
-  "usbKeyId": "$usb_key_id",
-  "userCanUnlock": True,
-  "agentAction": "observe",
-}, separators=(",", ":"), ensure_ascii=False))
-PY
-)"
-  else
-    payload="$(python3 - <<PY
-import json
-print(json.dumps({
-  "displayName": "$display_name",
-  "hwid": "$hwid" if "$hwid" else None,
-  "unlockProfile": "$unlock_profile",
-  "userCanUnlock": True,
-  "agentAction": "observe",
-}, separators=(",", ":"), ensure_ascii=False))
-PY
-)"
+  local dn_escaped hwid_escaped usb_escaped
+  dn_escaped="$(json_escape "$display_name")"
+  hwid_escaped="$(json_escape "$hwid")"
+  usb_escaped="$(json_escape "$usb_key_id")"
+
+  payload="{\"displayName\":\"${dn_escaped}\",\"unlockProfile\":\"${unlock_profile}\",\"userCanUnlock\":true,\"agentAction\":\"observe\""
+  if [ -n "$hwid" ]; then
+    payload="${payload},\"hwid\":\"${hwid_escaped}\""
   fi
+  if [ -n "$usb_key_id" ]; then
+    payload="${payload},\"usbKeyId\":\"${usb_escaped}\""
+  fi
+  payload="${payload}}"
 
   log "Registering device on server..."
   local resp
@@ -300,8 +301,8 @@ vm_demo_run_preboot() {
 cmd_install() {
   require_root
   require_cmd curl
-  require_cmd python3
   require_cmd openssl
+  require_cmd sed
 
   ensure_dirs
 
@@ -318,11 +319,7 @@ cmd_install() {
   local usb_key_id=""
   if confirm "Enable 3FA (requires a removable device labeled COREPOST_USB)?" ; then
     unlock_profile="3fa"
-    usb_key_id="corepost-usb-$(python3 - <<'PY'
-import secrets
-print(secrets.token_hex(8))
-PY
-)"
+    usb_key_id="corepost-usb-$(rand_hex 8)"
     setup_3fa_usb_factor
   fi
 
