@@ -33,11 +33,16 @@ Installer скачивает нужные артефакты по HTTPS из Git
 ### 2) Регистрация на сервере
 
 Installer просит у пользователя:
-- `COREPOST_SERVER_URL` (base URL сервера)
-- `COREPOST_ADMIN_TOKEN` (admin token для `POST /admin/register`)
+- `COREPOST_PREBOOT_SERVER_URL` (base URL сервера для preboot)
+- `COREPOST_PREBOOT_ADMIN_TOKEN` (admin token для `POST /admin/register` на preboot server)
+- `COREPOST_AGENT_SERVER_URL` (опционально, отдельный base URL сервера для агента; если пусто, используется preboot server)
+- `COREPOST_AGENT_ADMIN_TOKEN` (опционально, admin token для регистрации на agent server; если пусто, можно переиспользовать preboot token)
 
 После успешной регистрации сохраняет полный ответ сервера (provisioning bundle) в
 `/var/lib/corepost-install/provisioning.json` с правами `0600`.
+
+Если задан отдельный `COREPOST_AGENT_SERVER_URL`, installer регистрирует отдельное устройство на agent server и сохраняет
+второй provisioning bundle в `/var/lib/corepost-install/agent-provisioning.json`.
 
 ### 3) Конфиг preboot
 
@@ -100,7 +105,9 @@ sudo ./install.sh reconfigure
 - по запросу пользователя может заново зарегистрировать устройство на сервере (это по сути ротация секретов), сохранить новый bundle и перегенерировать `/etc/corepost-preboot.conf`.
 
 Примечание про agent:
-- installer после обновления unit/script/env гарантированно перезапускает `corepost-agent.service`, чтобы systemd перечитал новые файлы и `/etc/corepost-agent.env`.
+- installer сам формирует валидный `/etc/corepost-agent.env` (без `__SET_ME__`).
+- если agent secrets отсутствуют, installer не стартует `corepost-agent.service`.
+- после обновления unit/script/env installer перезапускает `corepost-agent.service`, чтобы systemd перечитал новые файлы и env.
 
 Удаление установленных артефактов:
 
