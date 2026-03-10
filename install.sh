@@ -260,6 +260,13 @@ vm_demo_clean() {
   fi
 
   if command -v losetup >/dev/null 2>&1; then
+    # Best-effort cleanup: detach any loop devices that point to our state dir.
+    # This covers cases where the backing file was deleted or the state file is missing.
+    losetup -a 2>/dev/null | awk -F: -v root="$state_dir" 'index($0, root) {print $1}' | while read -r loop; do
+      [ -n "$loop" ] || continue
+      losetup -d "$loop" >/dev/null 2>&1 || true
+    done
+
     if [ -f "$state_dir/demo/luks.loop" ]; then
       local loop=""
       loop="$(cat "$state_dir/demo/luks.loop" 2>/dev/null || true)"
